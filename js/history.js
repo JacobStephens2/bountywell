@@ -35,7 +35,7 @@ export class HistoryView {
     render() {
         this.close();
 
-        const data = storage.loadData(this.app.currentProfile);
+        const log = storage.loadData(this.app.currentProfile);
         const categories = this.getCategories();
 
         const year = this.viewDate.getFullYear();
@@ -51,7 +51,7 @@ export class HistoryView {
 
         // Monthly stats
         let daysTracked = 0;
-        let perfectDays = 0;
+        let completeDays = 0;
 
         // Build calendar cells
         let calendarHtml = '';
@@ -70,11 +70,11 @@ export class HistoryView {
             const isFuture = date > today;
             const isToday = dateKey === dayLog.dayKey(today);
 
-            const { done, total } = dayLog.dayProgress(data, date, categories);
+            const { done, total } = dayLog.dayProgress(log, date, categories);
             const tracked = done > 0;
             if (tracked) {
                 daysTracked++;
-                if (done >= total) perfectDays++;
+                if (done >= total) completeDays++;
             }
 
             const percentage = total > 0 ? Math.round((done / total) * 100) : 0;
@@ -101,7 +101,7 @@ export class HistoryView {
             `;
         }
 
-        const streak = dayLog.streak(data, categories, today);
+        const streak = dayLog.streak(log, categories, today);
 
         // Don't allow navigating past current month
         const isCurrentMonth = year === today.getFullYear() && month === today.getMonth();
@@ -121,7 +121,7 @@ export class HistoryView {
                         <span class="history-stat-label">Day Streak</span>
                     </div>
                     <div class="history-stat">
-                        <span class="history-stat-value">${perfectDays}</span>
+                        <span class="history-stat-value">${completeDays}</span>
                         <span class="history-stat-label">Perfect Days</span>
                     </div>
                     <div class="history-stat">

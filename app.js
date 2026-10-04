@@ -934,20 +934,20 @@ class BountywellTracker {
     setupDayChangeDetection() {
         // Remember what "today" was when the page was last active, so we can
         // detect a day rollover even after the old today has become yesterday.
-        let lastActiveDate = dayLog.dayKey(new Date());
+        let lastActiveDayKey = dayLog.dayKey(new Date());
 
         const refreshIfDayChanged = () => {
             const now = new Date();
-            const nowStr = dayLog.dayKey(now);
-            if (nowStr !== lastActiveDate) {
+            const todayKey = dayLog.dayKey(now);
+            if (todayKey !== lastActiveDayKey) {
                 // Day changed — if user was viewing the old "today", advance to the new today
-                if (dayLog.dayKey(this.currentDate) === lastActiveDate) {
+                if (dayLog.dayKey(this.currentDate) === lastActiveDayKey) {
                     this.navigateToDate(now);
                     if (this.auth.isLoggedIn) {
                         this.auth.refreshTokenIfNeeded().then(() => this.auth.sync()).catch(() => {});
                     }
                 }
-                lastActiveDate = nowStr;
+                lastActiveDayKey = todayKey;
             }
         };
 

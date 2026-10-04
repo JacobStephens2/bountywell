@@ -1,7 +1,8 @@
 // Day log: which servings a person checked, per category, per day.
 //
 // Stored shape (synced, exported and read by older cached builds, so it
-// must not change): { [Date.toDateString()]: { [categoryId]: number[] } }.
+// must not change): { [Day key]: { [categoryId]: number[] } }, where a Day
+// key is Date.toDateString().
 // A category's state is a count of servings done; writes store it as the
 // index prefix [0 .. done-1]. Counts are clamped to the current Plan, so
 // indices left over from a larger Plan are ignored until the next write.
@@ -28,7 +29,7 @@ export function tapServing(log, date, category, index) {
     if (index >= done) next = index + 1;
     else if (index === 0 || index === done - 1) next = 0;
     else next = index + 1;
-    return writeServings(log, date, category.id, Math.min(next, category.servings));
+    return writeServings(log, date, category.id, next);
 }
 
 export function clearDay(log, date) {
