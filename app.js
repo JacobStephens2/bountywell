@@ -1,9 +1,9 @@
 // Bountywell - Main Application Logic
-// Version: 2.1.2 - Restore Daily Dozen attribution; action row; permission granted
+// Version: 2.1.3 - Day log module owns the tap rule, progress and streak
 
 import { getCategoriesForDietType, getActiveCategories, getAllCategories, PRESETS, getCategoryNameHtml } from './js/categories.js';
 import * as storage from './js/storage.js';
-import { handleServingChange } from './js/checkbox.js';
+import * as dayLog from './js/day-log.js';
 import { PwaManager } from './js/pwa.js';
 import { HistoryView } from './js/history.js';
 import { AuthManager } from './js/auth.js';
@@ -37,9 +37,7 @@ class BountywellTracker {
         this.updateDateDisplay();
         this.setProfileSelector();
         this.renderCategories();
-        const data = storage.loadData(this.currentProfile);
-        this.restoreCheckboxes(data);
-        this.updateProgress();
+        this.renderDay(storage.loadData(this.currentProfile));
         this.updateHeaderColor();
         this.setupEventListeners();
         this.setupDayChangeDetection();
@@ -63,9 +61,7 @@ class BountywellTracker {
         this.categories = getActiveCategories(this.customServings);
         this.setProfileSelector();
         this.renderCategories();
-        const data = storage.loadData(this.currentProfile);
-        this.restoreCheckboxes(data);
-        this.updateProgress();
+        this.renderDay(storage.loadData(this.currentProfile));
         this.updateHeaderColor();
         this.updateDateDisplay();
     }
@@ -76,13 +72,11 @@ class BountywellTracker {
         this.currentDate = date;
         this.updateDateDisplay();
         this.renderCategories();
-        const data = storage.loadData(this.currentProfile);
-        this.restoreCheckboxes(data);
-        this.updateProgress();
+        this.renderDay(storage.loadData(this.currentProfile));
     }
 
     isViewingToday() {
-        return this.currentDate.toDateString() === new Date().toDateString();
+        return dayLog.dayKey(this.currentDate) === dayLog.dayKey(new Date());
     }
 
     returnToToday() {
@@ -223,8 +217,7 @@ class BountywellTracker {
             this.customServings = this.loadServings();
             this.categories = getActiveCategories(this.customServings);
             this.renderCategories();
-            this.restoreCheckboxes(storage.loadData(this.currentProfile));
-            this.updateProgress();
+            this.renderDay(storage.loadData(this.currentProfile));
             this.updateHeaderColor();
         }
 
@@ -244,9 +237,7 @@ class BountywellTracker {
         this.setProfileSelector();
         this.renderCategories();
 
-        const data = storage.loadData(this.currentProfile);
-        this.restoreCheckboxes(data);
-        this.updateProgress();
+        this.renderDay(storage.loadData(this.currentProfile));
         this.updateHeaderColor();
     }
 
@@ -572,93 +563,49 @@ class BountywellTracker {
         }
     }
 
-    // --- Checkbox / serving logic ---
+    // --- Serving taps ---
 
+    // The browser has already toggled the box; ignore that and re-render
+    // every box from the Day log after applying the tap rule.
     onServingChange(checkbox) {
-        const categoryId = checkbox.dataset.category;
+        const category = this.categories.find(c => c.id === checkbox.dataset.category);
+        if (!category) return;
+        const index = parseInt(checkbox.dataset.serving, 10);
 
-        handleServingChange(checkbox, this.categories, (catId, idx, checked) => {
-            this.saveServing(catId, idx, checked);
-        });
-
-        this.updateProgress();
-        this.updateCategoryStatus(categoryId);
-    }
-
-    saveServing(categoryId, servingIndex, isChecked) {
-        const data = storage.loadData(this.currentProfile);
-        const dateKey = this.currentDate.toDateString();
-
-        if (!data[dateKey]) {
-            data[dateKey] = {};
-        }
-
-        if (!data[dateKey][categoryId]) {
-            data[dateKey][categoryId] = [];
-        }
-
-        if (isChecked) {
-            if (!data[dateKey][categoryId].includes(servingIndex)) {
-                data[dateKey][categoryId].push(servingIndex);
-            }
-        } else {
-            const index = data[dateKey][categoryId].indexOf(servingIndex);
-            if (index > -1) {
-                data[dateKey][categoryId].splice(index, 1);
-            }
-        }
-
-        storage.saveData(this.currentProfile, data);
+        const log = dayLog.tapServing(storage.loadData(this.currentProfile), this.currentDate, category, index);
+        storage.saveData(this.currentProfile, log);
         this.auth.schedulePush();
+        this.renderDay(log);
     }
 
-    // --- Data restore ---
+    // --- Day rendering ---
 
-    restoreCheckboxes(data) {
-        const dateKey = this.currentDate.toDateString();
-        if (data[dateKey]) {
-            Object.keys(data[dateKey]).forEach(categoryId => {
-                const categoryExists = this.categories.some(c => c.id === categoryId);
-                if (!categoryExists) {
-                    return;
-                }
-
-                data[dateKey][categoryId].forEach(servingIndex => {
-                    const checkbox = document.getElementById(`${categoryId}-${servingIndex}`);
-                    if (checkbox) {
-                        checkbox.checked = true;
-                    }
-                });
-                this.updateCategoryStatus(categoryId, data);
-            });
-        }
-    }
-
-    // --- Progress tracking ---
-
-    updateProgress() {
-        const data = storage.loadData(this.currentProfile);
-        const dateKey = this.currentDate.toDateString();
-        let completedServings = 0;
-        let totalServings = 0;
-
+    renderDay(log) {
         this.categories.forEach(category => {
-            totalServings += category.servings;
-            if (data[dateKey] && data[dateKey][category.id]) {
-                completedServings += data[dateKey][category.id].length;
+            const done = dayLog.servingsDone(log, this.currentDate, category);
+            for (let i = 0; i < category.servings; i++) {
+                const checkbox = document.getElementById(`${category.id}-${i}`);
+                if (checkbox) checkbox.checked = i < done;
             }
+            const card = document.querySelector(`[data-category-id="${category.id}"]`);
+            if (card) card.classList.toggle('completed', done >= category.servings);
         });
+        this.updateProgress(log);
+    }
+
+    updateProgress(log) {
+        const { done, total } = dayLog.dayProgress(log, this.currentDate, this.categories);
 
         const progressFill = document.getElementById('progress-fill');
         const progressCount = document.getElementById('progress-count');
         const totalServingsElement = document.getElementById('total-servings');
 
-        const percentage = (completedServings / totalServings) * 100;
+        const percentage = total > 0 ? (done / total) * 100 : 0;
         progressFill.style.width = `${percentage}%`;
-        progressCount.textContent = completedServings;
-        totalServingsElement.textContent = totalServings;
+        progressCount.textContent = done;
+        totalServingsElement.textContent = total;
 
-        if (percentage >= 100) {
+        if (total > 0 && done >= total) {
             progressFill.style.background = 'linear-gradient(90deg, #508041, #38672a)';
             this.showCompletionCelebration();
         } else if (percentage >= 75) {
@@ -667,30 +614,6 @@ class BountywellTracker {
             progressFill.style.background = 'linear-gradient(90deg, #BB8F56, #508041)';
         } else {
             progressFill.style.background = 'linear-gradient(90deg, #E1C07B, #BB8F56)';
-        }
-    }
-
-    updateCategoryStatus(categoryId, data = null) {
-        const card = document.querySelector(`[data-category-id="${categoryId}"]`);
-        if (!data) {
-            data = storage.loadData(this.currentProfile);
-        }
-        const dateKey = this.currentDate.toDateString();
-        const category = this.categories.find(c => c.id === categoryId);
-
-        if (!category || !card) {
-            return;
-        }
-
-        if (data[dateKey] && data[dateKey][categoryId]) {
-            const completedCount = data[dateKey][categoryId].length;
-            if (completedCount >= category.servings) {
-                card.classList.add('completed');
-            } else {
-                card.classList.remove('completed');
-            }
-        } else {
-            card.classList.remove('completed');
         }
     }
 
@@ -713,7 +636,7 @@ class BountywellTracker {
         // Only celebrate for today, not when editing past dates
         if (!this.isViewingToday()) return;
 
-        const celebrationKey = storage.getCelebrationKey(this.currentProfile, this.currentDate.toDateString());
+        const celebrationKey = storage.getCelebrationKey(this.currentProfile, dayLog.dayKey(this.currentDate));
         if (localStorage.getItem(celebrationKey)) {
             return;
         }
@@ -751,26 +674,14 @@ class BountywellTracker {
             return;
         }
 
-        const checkboxes = document.querySelectorAll('.serving-checkbox');
-        checkboxes.forEach(checkbox => {
-            checkbox.checked = false;
-        });
+        const log = dayLog.clearDay(storage.loadData(this.currentProfile), this.currentDate);
+        storage.saveData(this.currentProfile, log);
 
-        const data = storage.loadData(this.currentProfile);
-        const dateKey = this.currentDate.toDateString();
-        if (data[dateKey]) {
-            delete data[dateKey];
-            storage.saveData(this.currentProfile, data);
-        }
-
-        const celebrationKey = storage.getCelebrationKey(this.currentProfile, this.currentDate.toDateString());
+        const celebrationKey = storage.getCelebrationKey(this.currentProfile, dayLog.dayKey(this.currentDate));
         localStorage.removeItem(celebrationKey);
 
         this.auth.schedulePush();
-        this.updateProgress();
-        this.categories.forEach(category => {
-            this.updateCategoryStatus(category.id);
-        });
+        this.renderDay(log);
 
         this.showResetConfirmation();
     }
@@ -809,9 +720,7 @@ class BountywellTracker {
         storage.saveCustomServings(this.currentProfile, servings);
         this.categories = getActiveCategories(servings);
         this.renderCategories();
-        const data = storage.loadData(this.currentProfile);
-        this.restoreCheckboxes(data);
-        this.updateProgress();
+        this.renderDay(storage.loadData(this.currentProfile));
         this.auth.schedulePush();
     }
 
@@ -1025,20 +934,20 @@ class BountywellTracker {
     setupDayChangeDetection() {
         // Remember what "today" was when the page was last active, so we can
         // detect a day rollover even after the old today has become yesterday.
-        let lastActiveDate = new Date().toDateString();
+        let lastActiveDayKey = dayLog.dayKey(new Date());
 
         const refreshIfDayChanged = () => {
             const now = new Date();
-            const nowStr = now.toDateString();
-            if (nowStr !== lastActiveDate) {
+            const todayKey = dayLog.dayKey(now);
+            if (todayKey !== lastActiveDayKey) {
                 // Day changed — if user was viewing the old "today", advance to the new today
-                if (this.currentDate.toDateString() === lastActiveDate) {
+                if (dayLog.dayKey(this.currentDate) === lastActiveDayKey) {
                     this.navigateToDate(now);
                     if (this.auth.isLoggedIn) {
                         this.auth.refreshTokenIfNeeded().then(() => this.auth.sync()).catch(() => {});
                     }
                 }
-                lastActiveDate = nowStr;
+                lastActiveDayKey = todayKey;
             }
         };
 
