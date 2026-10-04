@@ -1,6 +1,7 @@
 // History view: calendar, streaks, and day-detail drill-down
 
 import * as storage from './storage.js';
+import * as dayLog from './day-log.js';
 import { getActiveCategories } from './categories.js';
 import { trapFocus } from './focus-trap.js';
 
@@ -31,58 +32,11 @@ export class HistoryView {
         return this.app.categories;
     }
 
-    getTotalServings(categories) {
-        return categories.reduce((sum, c) => sum + c.servings, 0);
-    }
-
-    getDayCompleted(dayData, categories) {
-        let completed = 0;
-        categories.forEach(cat => {
-            if (dayData && dayData[cat.id]) {
-                completed += dayData[cat.id].length;
-            }
-        });
-        return completed;
-    }
-
-    calculateStreak(data, categories, totalServings) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        let streak = 0;
-
-        // Check if today is complete — if so, include it
-        const todayKey = today.toDateString();
-        const todayCompleted = this.getDayCompleted(data[todayKey], categories);
-        if (todayCompleted >= totalServings) {
-            streak++;
-        }
-
-        // Count backwards from yesterday
-        const d = new Date(today);
-        d.setDate(d.getDate() - 1);
-
-        while (true) {
-            const dateKey = d.toDateString();
-            const dayData = data[dateKey];
-            if (!dayData) break;
-            const completed = this.getDayCompleted(dayData, categories);
-            if (completed >= totalServings) {
-                streak++;
-                d.setDate(d.getDate() - 1);
-            } else {
-                break;
-            }
-        }
-
-        return streak;
-    }
-
     render() {
         this.close();
 
         const data = storage.loadData(this.app.currentProfile);
         const categories = this.getCategories();
-        const totalServings = this.getTotalServings(categories);
 
         const year = this.viewDate.getFullYear();
         const month = this.viewDate.getMonth();
@@ -112,21 +66,20 @@ export class HistoryView {
 
         for (let day = 1; day <= daysInMonth; day++) {
             const date = new Date(year, month, day);
-            const dateKey = date.toDateString();
-            const dayData = data[dateKey];
+            const dateKey = dayLog.dayKey(date);
             const isFuture = date > today;
-            const isToday = date.toDateString() === today.toDateString();
+            const isToday = dateKey === dayLog.dayKey(today);
 
-            let completed = 0;
-            if (dayData) {
-                completed = this.getDayCompleted(dayData, categories);
+            const { done, total } = dayLog.dayProgress(data, date, categories);
+            const tracked = done > 0;
+            if (tracked) {
                 daysTracked++;
-                if (completed >= totalServings) perfectDays++;
+                if (done >= total) perfectDays++;
             }
 
-            const percentage = totalServings > 0 ? Math.round((completed / totalServings) * 100) : 0;
+            const percentage = total > 0 ? Math.round((done / total) * 100) : 0;
             let colorClass = 'history-day-none';
-            if (!isFuture && dayData) {
+            if (!isFuture && tracked) {
                 if (percentage >= 100) colorClass = 'history-day-full';
                 else if (percentage >= 75) colorClass = 'history-day-high';
                 else if (percentage >= 50) colorClass = 'history-day-mid';
@@ -135,7 +88,7 @@ export class HistoryView {
 
             const futureClass = isFuture ? 'future' : '';
             const todayClass = isToday ? 'today' : '';
-            const hasData = dayData && !isFuture ? 'has-data' : '';
+            const hasData = tracked && !isFuture ? 'has-data' : '';
             const clickable = !isFuture ? 'clickable' : '';
 
             calendarHtml += `
@@ -143,12 +96,12 @@ export class HistoryView {
                      data-date="${dateKey}"
                      ${hasData ? `title="${percentage}% complete — click to edit"` : !isFuture ? 'title="Click to edit"' : ''}>
                     <span class="history-day-number">${day}</span>
-                    ${!isFuture && dayData ? `<span class="history-day-pct">${percentage}%</span>` : ''}
+                    ${!isFuture && tracked ? `<span class="history-day-pct">${percentage}%</span>` : ''}
                 </div>
             `;
         }
 
-        const streak = this.calculateStreak(data, categories, totalServings);
+        const streak = dayLog.streak(data, categories, today);
 
         // Don't allow navigating past current month
         const isCurrentMonth = year === today.getFullYear() && month === today.getMonth();

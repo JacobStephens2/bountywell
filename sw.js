@@ -1,6 +1,6 @@
 // Service Worker for Bountywell
 
-const CACHE_VERSION = 'v2.1.2';
+const CACHE_VERSION = 'v2.1.3';
 const CACHE_NAME = `bountywell-${CACHE_VERSION}`;
 const urlsToCache = [
     '/',
@@ -9,7 +9,7 @@ const urlsToCache = [
     '/app.js',
     '/js/categories.js',
     '/js/storage.js',
-    '/js/checkbox.js',
+    '/js/day-log.js',
     '/js/pwa.js',
     '/js/history.js',
     '/js/auth.js',
