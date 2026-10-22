@@ -64,6 +64,10 @@ export function apply(record) {
     const dayLogs = {};
 
     for (const id of ids) {
+        // The __proto__ setter does not create an own property, so this id
+        // would look accepted and commit would delete everyone else.
+        if (id === '__proto__') return refused();
+
         const person = record.profiles[id];
         if (!isPlainObject(person)) return refused();
         if (!isNonEmptyString(person.name) || !isNonEmptyString(person.color)) return refused();

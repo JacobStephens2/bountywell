@@ -376,6 +376,8 @@ test('empty, missing, and invalid records are refused and leave storage unchange
         ['string plan', { profiles: { ada: { ...person, customServings: 'beans' } } }],
         ['array day log', { profiles: { ada: { ...person, data: [] } } }],
         ['null day log', { profiles: { ada: { ...person, data: null } } }],
+        ['proto profile id', JSON.parse('{"profiles":{"__proto__":{"name":"Neta","color":"#112233","emoji":"🙂","dietType":"standard","customServings":null,"data":{}}}}')],
+        ['proto id beside a valid person', JSON.parse('{"profiles":{"ada":{"name":"Ada","color":"#38672a","emoji":"🫘","dietType":"vegan","customServings":{"beans":2},"data":{}},"__proto__":{"name":"Neta","color":"#112233","emoji":"🙂","dietType":"standard","customServings":null,"data":{}}}}')],
         ['one invalid person', {
             profiles: {
                 ada: {
