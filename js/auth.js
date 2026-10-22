@@ -119,26 +119,31 @@ export class AuthManager {
 
     async pushData() {
         if (!this.isLoggedIn) return;
-        const data = household.snapshot();
+        const record = household.snapshot();
         const result = await this.apiFetch('/data', {
             method: 'PUT',
-            body: JSON.stringify({ data }),
+            body: JSON.stringify({ data: record }),
         });
         localStorage.setItem(SYNC_TS_KEY, result.updatedAt);
         return result;
+    }
+
+    // Applies a server blob. On accept, commits it, stamps the sync time,
+    // and repaints. Returns false when the blob is refused.
+    commitAcceptedPull(record, updatedAt) {
+        const result = household.apply(record);
+        if (!result.applied) return false;
+        household.commit(result);
+        localStorage.setItem(SYNC_TS_KEY, updatedAt);
+        this.app.refreshAfterSync();
+        return true;
     }
 
     async pullData() {
         if (!this.isLoggedIn) return;
         const result = await this.apiFetch('/data');
         if (!result.data) return;
-
-        const applied = household.apply(result.data);
-        if (!applied.applied) return;
-
-        household.commit(applied);
-        localStorage.setItem(SYNC_TS_KEY, result.updatedAt);
-        this.app.refreshAfterSync();
+        this.commitAcceptedPull(result.data, result.updatedAt);
     }
 
     async sync() {
@@ -149,13 +154,9 @@ export class AuthManager {
             const serverTs = serverResult.updatedAt;
 
             if (serverResult.data && serverTs && (!localTs || serverTs > localTs)) {
-                const applied = household.apply(serverResult.data);
                 // A blob this client cannot read must not be replaced by a push
                 // on the same attempt, or the refusal deletes the only copy.
-                if (!applied.applied) return;
-                household.commit(applied);
-                localStorage.setItem(SYNC_TS_KEY, serverTs);
-                this.app.refreshAfterSync();
+                if (!this.commitAcceptedPull(serverResult.data, serverTs)) return;
             } else {
                 await this.pushData();
             }
