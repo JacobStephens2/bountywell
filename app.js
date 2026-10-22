@@ -1,7 +1,8 @@
 // Bountywell - Main Application Logic
-// Version: 2.1.4 - Household is one record for export, import and sync
+// Version: 2.1.5 - The tracker and History share one Plan
 
-import { getCategoriesForDietType, getActiveCategories, getAllCategories, PRESETS, getCategoryNameHtml } from './js/categories.js';
+import { getAllCategories, getCategoryNameHtml } from './js/categories.js';
+import { resolve, presets } from './js/plan.js';
 import * as storage from './js/storage.js';
 import * as dayLog from './js/day-log.js';
 import * as household from './js/household.js';
@@ -26,8 +27,7 @@ class BountywellTracker {
         this.currentDate = new Date();
         this.profiles = storage.loadProfiles();
         this.currentProfile = storage.loadCurrentProfile();
-        this.customServings = this.loadServings();
-        this.categories = getActiveCategories(this.customServings);
+        this.reloadPlan();
         this.pwa = new PwaManager();
         this.history = new HistoryView(this);
         this.auth = new AuthManager(this);
@@ -59,8 +59,7 @@ class BountywellTracker {
         }
         this.currentProfile = storage.loadCurrentProfile();
         this.profiles = storage.loadProfiles();
-        this.customServings = this.loadServings();
-        this.categories = getActiveCategories(this.customServings);
+        this.reloadPlan();
         this.setProfileSelector();
         this.renderCategories();
         this.renderDay(storage.loadData(this.currentProfile));
@@ -216,8 +215,7 @@ class BountywellTracker {
             // deleted profile before re-rendering.
             this.currentProfile = Object.keys(this.profiles)[0];
             storage.saveCurrentProfile(this.currentProfile);
-            this.customServings = this.loadServings();
-            this.categories = getActiveCategories(this.customServings);
+            this.reloadPlan();
             this.renderCategories();
             this.renderDay(storage.loadData(this.currentProfile));
             this.updateHeaderColor();
@@ -233,8 +231,7 @@ class BountywellTracker {
         this.currentProfile = profileId;
         storage.saveCurrentProfile(profileId);
 
-        this.customServings = this.loadServings();
-        this.categories = getActiveCategories(this.customServings);
+        this.reloadPlan();
 
         this.setProfileSelector();
         this.renderCategories();
@@ -708,19 +705,15 @@ class BountywellTracker {
 
     // --- Servings customization ---
 
-    loadServings() {
-        const custom = storage.loadCustomServings(this.currentProfile);
-        if (custom) return custom;
-        // Migrate from old diet type system
-        const dietType = storage.loadDietType(this.currentProfile);
-        const preset = PRESETS[dietType] || PRESETS.standard;
-        return { ...preset.servings };
+    reloadPlan() {
+        const plan = resolve(this.currentProfile);
+        this.customServings = plan.servings;
+        this.categories = plan.categories;
     }
 
     applyServings(servings) {
-        this.customServings = servings;
         storage.saveCustomServings(this.currentProfile, servings);
-        this.categories = getActiveCategories(servings);
+        this.reloadPlan();
         this.renderCategories();
         this.renderDay(storage.loadData(this.currentProfile));
         this.auth.schedulePush();
@@ -732,12 +725,13 @@ class BountywellTracker {
 
         const allCats = getAllCategories();
         const servings = { ...this.customServings };
+        const planPresets = presets();
 
         const modal = document.createElement('div');
         modal.className = 'customize-modal';
 
-        const presetBtns = Object.entries(PRESETS).map(([key, p]) =>
-            `<button class="preset-btn" data-preset="${key}">${p.name}</button>`
+        const presetBtns = planPresets.map(preset =>
+            `<button class="preset-btn" data-preset="${preset.id}">${preset.name}</button>`
         ).join('');
 
         const catRows = allCats.map(cat => {
@@ -802,7 +796,7 @@ class BountywellTracker {
 
         modal.querySelectorAll('.preset-btn').forEach(btn => {
             btn.addEventListener('click', () => {
-                const preset = PRESETS[btn.dataset.preset];
+                const preset = planPresets.find(item => item.id === btn.dataset.preset);
                 Object.assign(servings, preset.servings);
                 allCats.forEach(cat => {
                     const val = servings[cat.id] || 0;

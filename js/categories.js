@@ -1,4 +1,4 @@
-// Category definitions and preset configurations
+// Category definitions
 
 // Master list of all possible categories
 export function getAllCategories() {
@@ -17,43 +17,6 @@ export function getAllCategories() {
         { id: 'beverages', name: 'Beverages', icon: '💧', description: '60\u00a0oz\u00a0per\u00a0day', examples: ['Water', 'Green tea', 'Hibiscus tea', 'Herbal tea'] },
         { id: 'exercise', name: 'Exercise', icon: '🏃', description: '90 min. moderate or 40 min. vigorous', examples: ['Walking', 'Running', 'Cycling', 'Swimming', 'Yoga'] },
     ];
-}
-
-// Preset serving configurations (0 = category excluded)
-export const PRESETS = {
-    standard: {
-        name: 'Daily Dozen–inspired',
-        servings: { beans: 3, protein: 0, berries: 1, 'other-fruits': 3, greens: 2, cruciferous: 1, 'other-vegetables': 2, flaxseed: 1, 'nuts-seeds': 1, 'herbs-spices': 1, 'whole-grains': 3, beverages: 5, exercise: 1 },
-    },
-    modified: {
-        name: 'Modified',
-        servings: { beans: 0, protein: 2, berries: 1, 'other-fruits': 3, greens: 2, cruciferous: 1, 'other-vegetables': 2, flaxseed: 0, 'nuts-seeds': 1, 'herbs-spices': 1, 'whole-grains': 3, beverages: 5, exercise: 1 },
-    },
-    'one-bean': {
-        name: 'One Bean',
-        servings: { beans: 1, protein: 1, berries: 1, 'other-fruits': 3, greens: 2, cruciferous: 1, 'other-vegetables': 2, flaxseed: 0, 'nuts-seeds': 1, 'herbs-spices': 1, 'whole-grains': 3, beverages: 5, exercise: 1 },
-    },
-    'one-bean-two-protein': {
-        name: 'One Bean + Two Protein',
-        servings: { beans: 1, protein: 2, berries: 1, 'other-fruits': 3, greens: 2, cruciferous: 1, 'other-vegetables': 2, flaxseed: 0, 'nuts-seeds': 1, 'herbs-spices': 1, 'whole-grains': 3, beverages: 5, exercise: 1 },
-    },
-    'one-bean-two-protein-one-flax': {
-        name: 'One Bean + Two Protein + Flax',
-        servings: { beans: 1, protein: 2, berries: 1, 'other-fruits': 3, greens: 2, cruciferous: 1, 'other-vegetables': 2, flaxseed: 1, 'nuts-seeds': 1, 'herbs-spices': 1, 'whole-grains': 3, beverages: 5, exercise: 1 },
-    },
-};
-
-// Build active categories array from a servings map
-export function getActiveCategories(customServings) {
-    return getAllCategories()
-        .filter(cat => (customServings[cat.id] || 0) > 0)
-        .map(cat => ({ ...cat, servings: customServings[cat.id] }));
-}
-
-// Backward compatibility: derive categories from a diet type string
-export function getCategoriesForDietType(dietType) {
-    const preset = PRESETS[dietType] || PRESETS.standard;
-    return getActiveCategories(preset.servings);
 }
 
 // Map category IDs to NutritionFacts.org link URLs. Used with the written

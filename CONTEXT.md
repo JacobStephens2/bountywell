@@ -10,7 +10,7 @@ The words below mean one thing each in code, issues and reviews. Where the UI an
 
 **Serving** - one checkbox in a Category. Servings are counted, not individually identified: a Category with 2 of 3 Servings done shows its first two boxes checked.
 
-**Plan** - how many Servings each Category asks for, for one Person. Edited in Customize and stored as `dailyDozenCustomServings_<profileId>`. Replaces the legacy "diet type" preset (`dailyDozenDietType_<profileId>`), which is now only read to seed a Plan for a Person who never customized one.
+**Plan** - how many Servings each Category asks for, for one Person. Edited in Customize and stored as `dailyDozenCustomServings_<profileId>`. A stored servings map is the Plan. A missing map or a stored null means there is no customized Plan, so the legacy diet-type preset (`dailyDozenDietType_<profileId>`) supplies the servings, and a seed that names no preset supplies the standard preset. Reading the Plan does not write the seed back. A count of 0 omits that Category from the screen. Customize only offers counts from 0 to 9; a larger count already stored still counts. The Household record keeps the map and the seed as separate fields and does not turn the seed into a map.
 
 **Day log** - a Person's record of Servings done, per Category, per day. `js/day-log.js` owns its rules; `storage.loadData`/`saveData` only persist it. Stored as `{ [Day key]: { [categoryId]: number[] } }`, where each array holds the checked Serving indices. Writes store the prefix `[0 .. done-1]` and drop empty Categories and empty days. Reads count the distinct indices below the Category's current Serving count, so indices left over from a larger Plan are ignored.
 

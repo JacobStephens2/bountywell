@@ -2,7 +2,7 @@
 
 import * as storage from './storage.js';
 import * as dayLog from './day-log.js';
-import { getActiveCategories } from './categories.js';
+import { resolve } from './plan.js';
 import { trapFocus } from './focus-trap.js';
 
 export class HistoryView {
@@ -29,7 +29,7 @@ export class HistoryView {
     }
 
     getCategories() {
-        return this.app.categories;
+        return resolve(this.app.currentProfile).categories;
     }
 
     render() {
