@@ -56,13 +56,26 @@ function resolvedPathIsInsideDataDirectory(filePath) {
     return candidates.some((candidate) => dataDirs.some((dir) => isPathInside(dir, candidate)));
 }
 
+function pathsSendWouldStream(urlPath, root) {
+    const filePath = pathSendWouldStream(urlPath, root);
+    if (!filePath) {
+        return [];
+    }
+    // send's default index is index.html, and only when the raw path ends in '/'.
+    // The directory can sit outside data/ while that index file resolves inside it.
+    if (urlPath.endsWith('/')) {
+        return [filePath, path.join(filePath, 'index.html')];
+    }
+    return [filePath];
+}
+
 function staticFilesOutsideData(root) {
     const resolvedRoot = path.resolve(root);
     const serve = express.static(resolvedRoot);
     return function serveStaticOutsideData(req, res, next) {
         if (req.method === 'GET' || req.method === 'HEAD') {
-            const filePath = pathSendWouldStream(req.path, resolvedRoot);
-            if (filePath && resolvedPathIsInsideDataDirectory(filePath)) {
+            const filePaths = pathsSendWouldStream(req.path, resolvedRoot);
+            if (filePaths.some((filePath) => resolvedPathIsInsideDataDirectory(filePath))) {
                 res.status(404).end();
                 return;
             }

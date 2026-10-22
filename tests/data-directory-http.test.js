@@ -9,6 +9,8 @@ const fileName = 'not-served.txt';
 const secret = 'bountywell-data-dir-must-not-be-served';
 const secretPath = path.join(root, 'data', fileName);
 const linkPath = path.join(__dirname, 'data-dir-regression-link.txt');
+const indexDir = path.join(__dirname, 'probe-idx-dir');
+const indexLink = path.join(indexDir, 'index.html');
 
 const pathsThatResolveInsideData = [
     `/data/${fileName}`,
@@ -27,6 +29,8 @@ const pathsThatResolveInsideData = [
     `/./data/${fileName}?v=1`,
     '/./data/',
     '/tests/data-dir-regression-link.txt',
+    '/tests/probe-idx-dir/',
+    '/tests/probe-idx-dir/index.html',
 ];
 
 function request(port, urlPath, method = 'GET') {
@@ -60,6 +64,9 @@ describe('static file handler', () => {
         fs.writeFileSync(secretPath, secret);
         fs.rmSync(linkPath, { force: true });
         fs.symlinkSync(path.join('..', 'data', fileName), linkPath);
+        fs.rmSync(indexDir, { recursive: true, force: true });
+        fs.mkdirSync(indexDir);
+        fs.symlinkSync(path.join('..', '..', 'data', fileName), indexLink);
         const app = require('../server');
         server = await new Promise((resolve) => {
             const listening = app.listen(0, '127.0.0.1', () => resolve(listening));
@@ -70,6 +77,7 @@ describe('static file handler', () => {
     after(() => new Promise((resolve, reject) => {
         fs.rmSync(secretPath, { force: true });
         fs.rmSync(linkPath, { force: true });
+        fs.rmSync(indexDir, { recursive: true, force: true });
         if (!server) {
             resolve();
             return;
@@ -87,6 +95,10 @@ describe('static file handler', () => {
         const head = await request(port, `/./data/${fileName}`, 'HEAD');
         assert.equal(head.status, 404);
         assert.equal(head.body.includes(secret), false);
+
+        const indexHead = await request(port, '/tests/probe-idx-dir/', 'HEAD');
+        assert.equal(indexHead.status, 404);
+        assert.equal(indexHead.body.includes(secret), false);
     });
 
     it('still serves a static file outside the data directory', async () => {
@@ -99,6 +111,10 @@ describe('static file handler', () => {
         const res = await request(port, '/history');
         assert.equal(res.status, 200);
         assert.equal(res.body.includes('Bountywell'), true);
+
+        const rootPage = await request(port, '/');
+        assert.equal(rootPage.status, 200);
+        assert.equal(rootPage.body.includes('Bountywell'), true);
     });
 
     it('still refuses an unauthenticated read of synced data', async () => {
