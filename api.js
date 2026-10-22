@@ -30,6 +30,23 @@ function signToken(user) {
     return jwt.sign({ userId: user.id, email: user.email }, JWT_SECRET, { expiresIn: TOKEN_EXPIRY });
 }
 
+// password_replaced_at is UTC 'YYYY-MM-DD HH:MM:SS' from SQLite datetime().
+// JWT iat is unix seconds. Equal timestamps are not earlier, so a token issued
+// in the same second as the replacement still counts as current.
+function tokenIssuedBeforePasswordReplacement(issuedAtSeconds, passwordReplacedAt) {
+    if (passwordReplacedAt == null) {
+        return false;
+    }
+    if (typeof issuedAtSeconds !== 'number' || !Number.isFinite(issuedAtSeconds)) {
+        return false;
+    }
+    const issuedAtUtc = new Date(Math.floor(issuedAtSeconds) * 1000)
+        .toISOString()
+        .slice(0, 19)
+        .replace('T', ' ');
+    return issuedAtUtc < passwordReplacedAt;
+}
+
 // --- Auth middleware ---
 
 function authenticate(req, res, next) {
@@ -37,13 +54,18 @@ function authenticate(req, res, next) {
     if (!header || !header.startsWith('Bearer ')) {
         return res.status(401).json({ error: 'Not authenticated' });
     }
+    let decoded;
     try {
-        const decoded = jwt.verify(header.slice(7), JWT_SECRET);
-        req.user = decoded;
-        next();
+        decoded = jwt.verify(header.slice(7), JWT_SECRET);
     } catch {
         return res.status(401).json({ error: 'Invalid or expired token' });
     }
+    const account = stmts.getUserById.get(decoded.userId);
+    if (account && tokenIssuedBeforePasswordReplacement(decoded.iat, account.password_replaced_at)) {
+        return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+    req.user = decoded;
+    next();
 }
 
 // --- Rate limiting ---
