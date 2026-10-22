@@ -6,6 +6,18 @@ import { trapFocus } from './focus-trap.js';
 const TOKEN_KEY = 'dailyDozenAuthToken';
 const EMAIL_KEY = 'dailyDozenAuthEmail';
 const SYNC_TS_KEY = 'dailyDozenLastSync';
+// Set when the newest server household was refused. pushData checks it so
+// a later edit cannot replace the only copy this client could not read.
+const SERVER_RECORD_UNREADABLE_KEY = 'dailyDozenServerRecordUnreadable';
+
+function serverRecordUnreadable() {
+    return localStorage.getItem(SERVER_RECORD_UNREADABLE_KEY) === '1';
+}
+
+function setServerRecordUnreadable(unreadable) {
+    if (unreadable) localStorage.setItem(SERVER_RECORD_UNREADABLE_KEY, '1');
+    else localStorage.removeItem(SERVER_RECORD_UNREADABLE_KEY);
+}
 
 export class AuthManager {
     constructor(app) {
@@ -45,6 +57,7 @@ export class AuthManager {
         localStorage.removeItem(TOKEN_KEY);
         localStorage.removeItem(EMAIL_KEY);
         localStorage.removeItem(SYNC_TS_KEY);
+        setServerRecordUnreadable(false);
     }
 
     // --- Token refresh ---
@@ -119,6 +132,7 @@ export class AuthManager {
 
     async pushData() {
         if (!this.isLoggedIn) return;
+        if (serverRecordUnreadable()) return;
         const record = household.snapshot();
         const result = await this.apiFetch('/data', {
             method: 'PUT',
@@ -129,11 +143,23 @@ export class AuthManager {
     }
 
     // Applies a server blob. On accept, commits it, stamps the sync time,
-    // and repaints. Returns false when the blob is refused.
+    // and repaints. Returns false when the blob is refused. A refusal sticks
+    // until a later pull applies or the server has no blob, so pushData does
+    // not replace the only copy.
     commitAcceptedPull(record, updatedAt) {
-        const result = household.apply(record);
-        if (!result.applied) return false;
+        let result;
+        try {
+            result = household.apply(record);
+        } catch {
+            setServerRecordUnreadable(true);
+            return false;
+        }
+        if (!result.applied) {
+            setServerRecordUnreadable(true);
+            return false;
+        }
         household.commit(result);
+        setServerRecordUnreadable(false);
         localStorage.setItem(SYNC_TS_KEY, updatedAt);
         this.app.refreshAfterSync();
         return true;
@@ -142,7 +168,10 @@ export class AuthManager {
     async pullData() {
         if (!this.isLoggedIn) return;
         const result = await this.apiFetch('/data');
-        if (!result.data) return;
+        if (!result.data) {
+            setServerRecordUnreadable(false);
+            return;
+        }
         this.commitAcceptedPull(result.data, result.updatedAt);
     }
 
@@ -153,9 +182,12 @@ export class AuthManager {
             const localTs = localStorage.getItem(SYNC_TS_KEY);
             const serverTs = serverResult.updatedAt;
 
+            if (!serverResult.data) setServerRecordUnreadable(false);
+
             if (serverResult.data && serverTs && (!localTs || serverTs > localTs)) {
-                // A blob this client cannot read must not be replaced by a push
-                // on the same attempt, or the refusal deletes the only copy.
+                // A blob this client cannot read must not be replaced by a push,
+                // or the refusal deletes the only copy. The flag keeps a later
+                // edit from uploading over it. The next sync tries the pull again.
                 if (!this.commitAcceptedPull(serverResult.data, serverTs)) return;
             } else {
                 await this.pushData();
