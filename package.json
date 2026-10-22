@@ -1,6 +1,6 @@
 {
   "name": "bountywell",
-  "version": "2.1.3",
+  "version": "2.1.4",
   "description": "An offline-first Catholic food and wellness checklist with customizable plans and optional cloud sync.",
   "main": "server.js",
   "scripts": {

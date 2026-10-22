@@ -1,11 +1,23 @@
 // Account management: login, register, sync
 
-import * as storage from './storage.js';
+import * as household from './household.js';
 import { trapFocus } from './focus-trap.js';
 
 const TOKEN_KEY = 'dailyDozenAuthToken';
 const EMAIL_KEY = 'dailyDozenAuthEmail';
 const SYNC_TS_KEY = 'dailyDozenLastSync';
+// Set when the newest server household was refused. pushData checks it so
+// a later edit cannot replace the only copy this client could not read.
+const SERVER_RECORD_UNREADABLE_KEY = 'dailyDozenServerRecordUnreadable';
+
+function serverRecordUnreadable() {
+    return localStorage.getItem(SERVER_RECORD_UNREADABLE_KEY) === '1';
+}
+
+function setServerRecordUnreadable(unreadable) {
+    if (unreadable) localStorage.setItem(SERVER_RECORD_UNREADABLE_KEY, '1');
+    else localStorage.removeItem(SERVER_RECORD_UNREADABLE_KEY);
+}
 
 export class AuthManager {
     constructor(app) {
@@ -45,6 +57,7 @@ export class AuthManager {
         localStorage.removeItem(TOKEN_KEY);
         localStorage.removeItem(EMAIL_KEY);
         localStorage.removeItem(SYNC_TS_KEY);
+        setServerRecordUnreadable(false);
     }
 
     // --- Token refresh ---
@@ -117,58 +130,49 @@ export class AuthManager {
 
     // --- Sync ---
 
-    buildDataPayload() {
-        const profiles = storage.loadProfiles();
-        const payload = { profiles: {} };
-        Object.keys(profiles).forEach(profileId => {
-            payload.profiles[profileId] = {
-                name: profiles[profileId].name,
-                color: profiles[profileId].color,
-                emoji: profiles[profileId].emoji || '👤',
-                dietType: storage.loadDietType(profileId),
-                customServings: storage.loadCustomServings(profileId),
-                data: storage.loadData(profileId),
-            };
-        });
-        return payload;
-    }
-
-    restoreFromPayload(payload) {
-        if (!payload || !payload.profiles) return;
-
-        const profiles = {};
-        Object.keys(payload.profiles).forEach(profileId => {
-            const p = payload.profiles[profileId];
-            profiles[profileId] = { name: p.name, color: p.color, emoji: p.emoji || '👤' };
-            storage.saveDietType(profileId, p.dietType);
-            if (p.customServings) {
-                storage.saveCustomServings(profileId, p.customServings);
-            }
-            storage.saveData(profileId, p.data || {});
-        });
-        storage.saveProfiles(profiles);
-    }
-
     async pushData() {
         if (!this.isLoggedIn) return;
-        const data = this.buildDataPayload();
+        if (serverRecordUnreadable()) return;
+        const record = household.snapshot();
         const result = await this.apiFetch('/data', {
             method: 'PUT',
-            body: JSON.stringify({ data }),
+            body: JSON.stringify({ data: record }),
         });
         localStorage.setItem(SYNC_TS_KEY, result.updatedAt);
         return result;
     }
 
+    // Applies a server blob. On accept, commits it, stamps the sync time,
+    // and repaints. Returns false when the blob is refused. A refusal sticks
+    // until a later pull applies or the server has no blob, so pushData does
+    // not replace the only copy.
+    commitAcceptedPull(record, updatedAt) {
+        let result;
+        try {
+            result = household.apply(record);
+        } catch {
+            setServerRecordUnreadable(true);
+            return false;
+        }
+        if (!result.applied) {
+            setServerRecordUnreadable(true);
+            return false;
+        }
+        household.commit(result);
+        setServerRecordUnreadable(false);
+        localStorage.setItem(SYNC_TS_KEY, updatedAt);
+        this.app.refreshAfterSync();
+        return true;
+    }
+
     async pullData() {
         if (!this.isLoggedIn) return;
         const result = await this.apiFetch('/data');
-        if (result.data) {
-            this.restoreFromPayload(result.data);
-            localStorage.setItem(SYNC_TS_KEY, result.updatedAt);
-            // Refresh the app to show pulled data
-            this.app.refreshAfterSync();
+        if (!result.data) {
+            setServerRecordUnreadable(false);
+            return;
         }
+        this.commitAcceptedPull(result.data, result.updatedAt);
     }
 
     async sync() {
@@ -178,13 +182,14 @@ export class AuthManager {
             const localTs = localStorage.getItem(SYNC_TS_KEY);
             const serverTs = serverResult.updatedAt;
 
+            if (!serverResult.data) setServerRecordUnreadable(false);
+
             if (serverResult.data && serverTs && (!localTs || serverTs > localTs)) {
-                // Server is newer — pull
-                this.restoreFromPayload(serverResult.data);
-                localStorage.setItem(SYNC_TS_KEY, serverTs);
-                this.app.refreshAfterSync();
+                // A blob this client cannot read must not be replaced by a push,
+                // or the refusal deletes the only copy. The flag keeps a later
+                // edit from uploading over it. The next sync tries the pull again.
+                if (!this.commitAcceptedPull(serverResult.data, serverTs)) return;
             } else {
-                // Local is newer or same — push
                 await this.pushData();
             }
         } catch (e) {

@@ -1,9 +1,10 @@
 // Bountywell - Main Application Logic
-// Version: 2.1.3 - Day log module owns the tap rule, progress and streak
+// Version: 2.1.4 - Household is one record for export, import and sync
 
 import { getCategoriesForDietType, getActiveCategories, getAllCategories, PRESETS, getCategoryNameHtml } from './js/categories.js';
 import * as storage from './js/storage.js';
 import * as dayLog from './js/day-log.js';
+import * as household from './js/household.js';
 import { PwaManager } from './js/pwa.js';
 import { HistoryView } from './js/history.js';
 import { AuthManager } from './js/auth.js';
@@ -56,6 +57,7 @@ class BountywellTracker {
         if (this.isViewingToday()) {
             this.currentDate = new Date();
         }
+        this.currentProfile = storage.loadCurrentProfile();
         this.profiles = storage.loadProfiles();
         this.customServings = this.loadServings();
         this.categories = getActiveCategories(this.customServings);
@@ -830,20 +832,11 @@ class BountywellTracker {
     // --- Data export ---
 
     exportData() {
-        const profiles = storage.loadProfiles();
+        const snapshot = household.snapshot();
         const exportPayload = {
             exportDate: new Date().toISOString(),
-            profiles: {}
+            profiles: snapshot.profiles,
         };
-
-        Object.keys(profiles).forEach(profileId => {
-            exportPayload.profiles[profileId] = {
-                name: profiles[profileId].name,
-                color: profiles[profileId].color,
-                dietType: storage.loadDietType(profileId),
-                data: storage.loadData(profileId)
-            };
-        });
 
         const json = JSON.stringify(exportPayload, null, 2);
         const blob = new Blob([json], { type: 'application/json' });
@@ -873,14 +866,15 @@ class BountywellTracker {
             reader.onload = (event) => {
                 try {
                     const payload = JSON.parse(event.target.result);
-                    if (!payload.profiles || typeof payload.profiles !== 'object') {
+                    const result = household.apply(payload);
+                    if (!result.applied) {
                         alert('Invalid file: no profile data found.');
                         return;
                     }
                     if (!confirm('This will replace all your current data. Continue?')) {
                         return;
                     }
-                    this.auth.restoreFromPayload(payload);
+                    household.commit(result);
                     this.refreshAfterSync();
                     this.auth.schedulePush();
                     alert('Data imported successfully.');

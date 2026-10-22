@@ -2,7 +2,7 @@
 
 import { STORAGE_KEYS } from './storage.js';
 
-const APP_VERSION = 'v2.1.0';
+const APP_VERSION = 'v2.1.4';
 
 export class PwaManager {
     constructor() {
@@ -21,7 +21,7 @@ export class PwaManager {
     registerServiceWorker() {
         if (!('serviceWorker' in navigator)) return;
 
-        navigator.serviceWorker.register('sw.js?v=2.1.0')
+        navigator.serviceWorker.register('sw.js?v=2.1.4')
             .then(registration => {
 
                 // Periodically check for SW updates
