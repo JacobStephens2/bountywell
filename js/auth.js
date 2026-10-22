@@ -1,6 +1,6 @@
 // Account management: login, register, sync
 
-import * as storage from './storage.js';
+import * as household from './household.js';
 import { trapFocus } from './focus-trap.js';
 
 const TOKEN_KEY = 'dailyDozenAuthToken';
@@ -117,41 +117,9 @@ export class AuthManager {
 
     // --- Sync ---
 
-    buildDataPayload() {
-        const profiles = storage.loadProfiles();
-        const payload = { profiles: {} };
-        Object.keys(profiles).forEach(profileId => {
-            payload.profiles[profileId] = {
-                name: profiles[profileId].name,
-                color: profiles[profileId].color,
-                emoji: profiles[profileId].emoji || '👤',
-                dietType: storage.loadDietType(profileId),
-                customServings: storage.loadCustomServings(profileId),
-                data: storage.loadData(profileId),
-            };
-        });
-        return payload;
-    }
-
-    restoreFromPayload(payload) {
-        if (!payload || !payload.profiles) return;
-
-        const profiles = {};
-        Object.keys(payload.profiles).forEach(profileId => {
-            const p = payload.profiles[profileId];
-            profiles[profileId] = { name: p.name, color: p.color, emoji: p.emoji || '👤' };
-            storage.saveDietType(profileId, p.dietType);
-            if (p.customServings) {
-                storage.saveCustomServings(profileId, p.customServings);
-            }
-            storage.saveData(profileId, p.data || {});
-        });
-        storage.saveProfiles(profiles);
-    }
-
     async pushData() {
         if (!this.isLoggedIn) return;
-        const data = this.buildDataPayload();
+        const data = household.snapshot();
         const result = await this.apiFetch('/data', {
             method: 'PUT',
             body: JSON.stringify({ data }),
@@ -163,12 +131,14 @@ export class AuthManager {
     async pullData() {
         if (!this.isLoggedIn) return;
         const result = await this.apiFetch('/data');
-        if (result.data) {
-            this.restoreFromPayload(result.data);
-            localStorage.setItem(SYNC_TS_KEY, result.updatedAt);
-            // Refresh the app to show pulled data
-            this.app.refreshAfterSync();
-        }
+        if (!result.data) return;
+
+        const applied = household.apply(result.data);
+        if (!applied.applied) return;
+
+        household.commit(applied);
+        localStorage.setItem(SYNC_TS_KEY, result.updatedAt);
+        this.app.refreshAfterSync();
     }
 
     async sync() {
@@ -179,12 +149,14 @@ export class AuthManager {
             const serverTs = serverResult.updatedAt;
 
             if (serverResult.data && serverTs && (!localTs || serverTs > localTs)) {
-                // Server is newer — pull
-                this.restoreFromPayload(serverResult.data);
+                const applied = household.apply(serverResult.data);
+                // A blob this client cannot read must not be replaced by a push
+                // on the same attempt, or the refusal deletes the only copy.
+                if (!applied.applied) return;
+                household.commit(applied);
                 localStorage.setItem(SYNC_TS_KEY, serverTs);
                 this.app.refreshAfterSync();
             } else {
-                // Local is newer or same — push
                 await this.pushData();
             }
         } catch (e) {

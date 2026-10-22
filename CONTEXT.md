@@ -4,6 +4,8 @@ The words below mean one thing each in code, issues and reviews. Where the UI an
 
 **Person** - someone whose servings are tracked. The UI says "person"; storage, `app.js` and the sync payload say "profile" (`dailyDozenProfiles`, `currentProfile`). Each Person has their own Plan and Day log.
 
+**Household** - every Person on this install, synced and exported as one record. Each Person in the Household has a name, a color, an emoji, a legacy diet-type seed, a Plan or none, and a Day log. The selected Person is not part of the Household; it is which Person this device is showing. A celebration is not part of the Household; it is this device remembering that it already marked a Complete day.
+
 **Category** - one row on the tracker screen, such as Beans or Exercise. Defined in `js/categories.js` with an `id`, a name, an icon and the number of servings the current Plan asks for.
 
 **Serving** - one checkbox in a Category. Servings are counted, not individually identified: a Category with 2 of 3 Servings done shows its first two boxes checked.
