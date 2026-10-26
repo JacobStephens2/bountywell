@@ -4,10 +4,11 @@ on:
   push:
     branches:
       - main
+  pull_request:
   workflow_dispatch:
 
 concurrency:
-  group: bountywell-production
+  group: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.ref) || 'bountywell-production' }}
   cancel-in-progress: false
 
 permissions:
@@ -16,12 +17,12 @@ permissions:
 jobs:
   test:
     name: Test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -35,7 +36,8 @@ jobs:
   deploy:
     name: Fast-forward production
     needs: test
-    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-26.04
     timeout-minutes: 50
     steps:
       - name: Install the restricted deploy key
