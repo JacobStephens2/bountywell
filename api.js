@@ -6,7 +6,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const nodemailer = require('nodemailer');
-const { stmts } = require('./db');
+const { db, stmts } = require('./db');
 
 const router = express.Router();
 
@@ -239,6 +239,12 @@ router.post('/forgot-password', authLimiter, (req, res) => {
     res.json({ message: 'If an account exists with that email, a reset link has been sent.' });
 });
 
+// One write: a failure while marking resets rolls the password change back.
+const consumePasswordReset = db.transaction((userId, passwordHash) => {
+    stmts.updatePassword.run(passwordHash, userId);
+    stmts.markUnusedResetsUsed.run(userId);
+});
+
 router.post('/reset-password', authLimiter, (req, res) => {
     const { token, password } = req.body || {};
 
@@ -255,8 +261,7 @@ router.post('/reset-password', authLimiter, (req, res) => {
     }
 
     const hash = bcrypt.hashSync(password, 10);
-    stmts.updatePassword.run(hash, resetRow.user_id);
-    stmts.markResetUsed.run(resetRow.id);
+    consumePasswordReset(resetRow.user_id, hash);
 
     res.json({ message: 'Password has been reset. You can now sign in.' });
 });

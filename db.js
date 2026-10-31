@@ -52,7 +52,7 @@ const stmts = {
     getData: db.prepare('SELECT data, updated_at FROM user_data WHERE user_id = ?'),
     createReset: db.prepare('INSERT INTO password_resets (user_id, token, expires_at) VALUES (?, ?, datetime(\'now\', \'+1 hour\'))'),
     getValidReset: db.prepare('SELECT * FROM password_resets WHERE token = ? AND used = 0 AND expires_at > datetime(\'now\')'),
-    markResetUsed: db.prepare('UPDATE password_resets SET used = 1 WHERE id = ?'),
+    markUnusedResetsUsed: db.prepare('UPDATE password_resets SET used = 1 WHERE user_id = ? AND used = 0'),
     updatePassword: db.prepare('UPDATE users SET password_hash = ?, password_replaced_at = datetime(\'now\') WHERE id = ?'),
     upsertData: db.prepare(`
         INSERT INTO user_data (user_id, data, updated_at)
