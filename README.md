@@ -49,7 +49,7 @@ Once installed, Bountywell launches like a native app and keeps its core trackin
 
 ## Run locally
 
-Requirements: a supported Node.js LTS release (20, 22, or 24).
+Requirements: Node.js 22 or 26 (both tested in CI).
 
 ```bash
 npm install
@@ -57,6 +57,11 @@ npm start
 ```
 
 Then open [http://localhost:3000](http://localhost:3000).
+
+Run `npm ci --engine-strict --no-audit --no-fund` and `npm test` to match CI.
+There is no build step; the server and client run directly from source.
+After switching Node versions, run `npm ci` again to install the matching
+`better-sqlite3` native addon.
 
 The application uses vanilla JavaScript, HTML, and CSS on the client; Express and SQLite provide optional account and synchronization APIs. The main PWA files are `index.html`, `styles.css`, `app.js`, `manifest.json`, and `sw.js`. The Android Trusted Web Activity wrapper lives in `android-twa/`.
 
